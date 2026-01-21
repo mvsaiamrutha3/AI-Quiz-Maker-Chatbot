@@ -1,0 +1,9 @@
+Flask
+Flask-Cors
+python-docx
+flask
+flask-cors
+langchain
+langchain-openai
+python-dotenv
+python-docx
