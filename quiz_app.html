@@ -1,0 +1,574 @@
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Quiz Agent Application</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+        <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+            body {
+                font-family: 'Inter', sans-serif;
+                user-select: none; /* Prevents text selection during drag */
+            }
+            /* Custom scrollbar for a cleaner look */
+            ::-webkit-scrollbar {
+                width: 8px;
+            }
+            ::-webkit-scrollbar-track {
+                background: #1f2937; /* gray-800 */
+            }
+            ::-webkit-scrollbar-thumb {
+                background: #4b5563; /* gray-600 */
+                border-radius: 4px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: #6b7280; /* gray-500 */
+            }
+            /* Style for the draggable handles */
+            .drag-handle, .category-drag-handle {
+                cursor: move;
+            }
+            /* Resizer handle style */
+            .resizer {
+                width: 10px;
+                cursor: col-resize;
+                background-color: #374151; /* gray-700 */
+                z-index: 10;
+            }
+            .resizer:hover {
+                background-color: #4f46e5; /* indigo-600 */
+            }
+            /* Class for the correct answer highlight (green) */
+            .correct-answer-highlight {
+                background-color: rgba(16, 185, 129, 0.2); /* bg-green-900/50 */
+                border: 1px solid #065f46; /* border-green-700 */
+            }
+            .correct-answer-highlight span {
+                color: #6ee7b7; /* text-green-300 */
+                font-weight: bold;
+            }
+            /* Class for the selected QUESTION highlight (blue) */
+            .selected-question-highlight {
+                border-color: #4f46e5;
+                box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.5);
+            }
+            /* Ghost class for SortableJS */
+            .sortable-ghost {
+                background: #312e81; /* indigo-900 */
+                opacity: 0.5;
+            }
+            [contenteditable] {
+                outline: 2px solid transparent;
+                transition: outline-color 0.2s;
+            }
+            [contenteditable]:focus {
+                outline-color: #4f46e5; /* indigo-600 */
+                border-radius: 4px;
+            }
+            /* Correctly disable anchor tags acting as buttons */
+            .download-btn.disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+                pointer-events: none;
+            }
+        </style>
+    </head>
+    <body class="bg-gray-900 text-gray-200 flex flex-col h-screen">
+
+        <!-- Main Content Area -->
+        <div class="flex flex-1 overflow-hidden">
+
+            <!-- Left Pane: Chatbot Interface -->
+            <div id="left-pane" class="w-2/3 flex flex-col p-4">
+                <div id="chat-history" class="flex-1 bg-gray-800 rounded-t-lg p-6 overflow-y-auto">
+                    <div class="space-y-6">
+                        <!-- Bot Message -->
+                        <div class="flex items-start gap-3">
+                            <div class="bg-indigo-500 p-2 rounded-full flex-shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-3 max-w-lg">
+                                <p class="text-sm">Welcome! I'm your quiz agent. You can ask me to create, modify, or check questions. You can also load data from a DOCX or JSON file. How can I help you today?</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Input Area -->
+                <div class="bg-gray-800 rounded-b-lg p-4">
+                    <!-- Attached files container -->
+                    <div id="attachment-container" class="mb-2 flex flex-wrap gap-2 empty:mb-0">
+                        <!-- JS will add file pills here -->
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <input type="file" id="file-input" multiple class="hidden">
+                        <button id="attach-file-btn" class="flex-shrink-0 bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold p-3 rounded-lg transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                            </svg>
+                        </button>
+                        <input type="text" id="prompt-input" placeholder="Type your command here..." class="w-full bg-gray-700 text-gray-200 rounded-lg p-3 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button id="send-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-5 rounded-lg transition-colors">Send</button>
+                    </div>
+                </div>
+                <!-- Action Buttons -->
+                <div class="mt-4 flex justify-center gap-4 flex-wrap">
+                    <button id="save-docx-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" /></svg>
+                        Save to DOCX
+                    </button>
+                    <a id="download-docx-btn" class="download-btn disabled bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        Download
+                    </a>
+                    <button id="save-json-btn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 01-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        Save to JSON
+                    </button>
+                    <a id="download-json-btn" class="download-btn disabled bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        Download
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Resizer Handle -->
+            <div id="resizer" class="resizer"></div>
+
+            <!-- Right Pane: Scrollable Question Sidebar -->
+            <div id="right-pane" class="w-1/3 bg-gray-800 m-4 ml-0 rounded-lg overflow-y-auto p-2">
+                <div id="category-list" class="space-y-4 p-4">
+                    <!-- Dynamic content will be rendered here by JavaScript -->
+                    <div class="text-center text-gray-500 py-10">
+                        <p>No quiz loaded.</p>
+                        <p class="text-sm mt-2">Use the chatbot to load a JSON or DOCX file.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    <script>
+    // This function will initialize the application logic
+    function initializeQuizApp() {
+        // --- State Management ---
+        let attachedFiles = [];
+        let questionIdCounter = 100;
+
+        // --- Element Selectors ---
+        const resizer = document.getElementById('resizer');
+        const leftPane = document.getElementById('left-pane');
+        const rightPane = document.getElementById('right-pane');
+        const rightPaneContent = document.getElementById('right-pane');
+        const categoryList = document.getElementById('category-list');
+        const attachFileBtn = document.getElementById('attach-file-btn');
+        const fileInput = document.getElementById('file-input');
+        const attachmentContainer = document.getElementById('attachment-container');
+        const sendBtn = document.getElementById('send-btn');
+        const promptInput = document.getElementById('prompt-input');
+        const chatHistoryContainer = document.getElementById('chat-history');
+        const saveJsonBtn = document.getElementById('save-json-btn');
+        const downloadJsonBtn = document.getElementById('download-json-btn');
+        const saveDocxBtn = document.getElementById('save-docx-btn');
+        const downloadDocxBtn = document.getElementById('download-docx-btn');
+
+
+        // --- Resizable Sidebar Logic ---
+        let isResizing = false;
+        resizer.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            isResizing = true;
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', stopResize);
+        });
+
+        function handleMouseMove(e) {
+            if (!isResizing) return;
+            const container = resizer.parentElement;
+            const containerOffsetLeft = container.offsetLeft;
+            const pointerRelativeX = e.clientX - containerOffsetLeft;
+            const leftPaneMinWidth = 200;
+            const rightPaneMinWidth = 300;
+            let leftPaneWidth = pointerRelativeX - (resizer.offsetWidth / 2);
+            if (leftPaneWidth < leftPaneMinWidth) leftPaneWidth = leftPaneMinWidth;
+            if (container.clientWidth - leftPaneWidth < rightPaneMinWidth) {
+                leftPaneWidth = container.clientWidth - rightPaneMinWidth;
+            }
+            leftPane.style.width = `${leftPaneWidth}px`;
+            rightPane.style.width = `${container.clientWidth - leftPaneWidth - resizer.offsetWidth}px`;
+        }
+
+        function stopResize() {
+            isResizing = false;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', stopResize);
+        }
+
+        // --- Dynamic Point & Numbering Update Function ---
+        function updateQuestionOrder(list) {
+            const questions = list.children;
+            Array.from(questions).forEach((question, index) => {
+                const questionNumberEl = question.querySelector('.question-number');
+                const pointValueEl = question.querySelector('.point-value');
+                if (questionNumberEl && pointValueEl) {
+                    questionNumberEl.textContent = `Question ${index + 1}`;
+                    pointValueEl.textContent = `${(index + 1) * 10} pts`;
+                }
+            });
+        }
+
+        // --- Draggable Questions & Categories Logic ---
+        function initializeSortables() {
+            const questionLists = document.querySelectorAll('.question-list');
+            questionLists.forEach(list => {
+                if (list.sortable) list.sortable.destroy(); // Destroy previous instance if it exists
+                list.sortable = new Sortable(list, {
+                    animation: 150,
+                    handle: '.drag-handle',
+                    ghostClass: 'sortable-ghost',
+                    onEnd: function (evt) {
+                        updateQuestionOrder(evt.from);
+                    }
+                });
+            });
+            
+            if (categoryList.sortable) categoryList.sortable.destroy();
+            categoryList.sortable = new Sortable(categoryList, {
+                animation: 150,
+                handle: '.category-drag-handle',
+                ghostClass: 'sortable-ghost',
+            });
+        }
+        initializeSortables();
+
+
+        // --- Event Delegation for Dynamic Content ---
+        rightPaneContent.addEventListener('change', function(e) {
+            if (e.target.type === 'radio') {
+                const currentQuestionContainer = e.target.closest('.flex-1');
+                if (currentQuestionContainer) {
+                    const allOptions = currentQuestionContainer.querySelectorAll('.option-container');
+                    allOptions.forEach(opt => opt.classList.remove('correct-answer-highlight'));
+                    const selectedOptionContainer = e.target.closest('.option-container');
+                    if (selectedOptionContainer) {
+                        selectedOptionContainer.classList.add('correct-answer-highlight');
+                    }
+                }
+            }
+        });
+
+        rightPaneContent.addEventListener('click', function(e) {
+            const targetQuestion = e.target.closest('.question-component');
+            if (!targetQuestion) return;
+            const isInteractiveClick = e.target.closest('[contenteditable], input, .drag-handle');
+            if (isInteractiveClick) return;
+            const allQuestions = document.querySelectorAll('.question-component');
+            if (targetQuestion.classList.contains('selected-question-highlight')) {
+                targetQuestion.classList.remove('selected-question-highlight');
+            } else {
+                allQuestions.forEach(q => q.classList.remove('selected-question-highlight'));
+                targetQuestion.classList.add('selected-question-highlight');
+            }
+        });
+
+        // --- File Attachment Logic ---
+        attachFileBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', function() {
+            for (const file of this.files) {
+                attachedFiles.push(file);
+                const pill = document.createElement('span');
+                pill.className = 'bg-gray-600 text-sm font-medium px-3 py-1 rounded-full flex items-center gap-2';
+                pill.textContent = file.name;
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'text-gray-400 hover:text-white';
+                removeBtn.innerHTML = '&times;';
+                removeBtn.onclick = () => {
+                    pill.remove();
+                    attachedFiles = attachedFiles.filter(f => f !== file);
+                };
+                pill.appendChild(removeBtn);
+                attachmentContainer.appendChild(pill);
+            }
+            this.value = ''; // Reset file input
+        });
+
+        // --- Backend Communication ---
+        sendBtn.addEventListener('click', async () => {
+            const prompt = promptInput.value;
+            if (!prompt && attachedFiles.length === 0) {
+                alert("Please type a command or attach a file.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('prompt', prompt);
+            
+            if (attachedFiles.length === 0) {
+                const currentQuizData = getQuizDataFromUI();
+                console.log(currentQuizData)
+                formData.append('quiz_data', JSON.stringify(currentQuizData));
+
+                const selectedQuestion = document.querySelector('.selected-question-highlight');
+                if (selectedQuestion) {
+                    const categoryEl = selectedQuestion.closest('details');
+                    const categoryName = categoryEl.querySelector('h3').textContent.trim();
+                    const questionList = Array.from(categoryEl.querySelector('.question-list').children);
+                    const questionIndex = questionList.indexOf(selectedQuestion);
+                    
+                    formData.append('selected_question_info', JSON.stringify({
+                        category: categoryName,
+                        position: questionIndex + 1
+                    }));
+                }
+            } else {
+                attachedFiles.forEach(file => {
+                    formData.append('files', file);
+                });
+            }
+            console.log(formData)
+            addChatMessage(prompt || `Processing ${attachedFiles.length} file(s)...`, true);
+            
+            try {
+                const response = await fetch('http://127.0.0.1:5000/api/process', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const result = await response.json();
+                console.log("Response from backend:", result);
+
+                if (!response.ok) {
+                    throw new Error(result.message || `HTTP error! status: ${response.status}`);
+                }
+
+                addChatMessage(result.message, false);
+
+                if (result.action === 'load_quiz' || result.action === 'update_quiz') {
+                    renderQuizData(result.data);
+                }
+                
+            } catch (error) {
+                console.error("Error sending data to backend:", error);
+                addChatMessage(`Error: ${error.message}`, false);
+            } finally {
+                promptInput.value = '';
+                attachmentContainer.innerHTML = '';
+                attachedFiles = [];
+            }
+        });
+        
+        // --- UI Rendering Functions ---
+        function addChatMessage(message, isUser) {
+            const chatContainer = chatHistoryContainer.querySelector('.space-y-6');
+            const messageDiv = document.createElement('div');
+            const iconDiv = document.createElement('div');
+            const textDiv = document.createElement('div');
+            const textP = document.createElement('p');
+
+            textP.className = 'text-sm';
+            textP.textContent = message;
+            textDiv.className = 'bg-gray-700 rounded-lg p-3 max-w-lg';
+            iconDiv.className = `p-2 rounded-full flex-shrink-0`;
+
+            if (isUser) {
+                messageDiv.className = 'flex items-start gap-3 justify-end';
+                iconDiv.classList.add('bg-green-500');
+                iconDiv.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>`;
+                messageDiv.append(textDiv, iconDiv);
+            } else {
+                messageDiv.className = 'flex items-start gap-3';
+                iconDiv.classList.add('bg-indigo-500');
+                iconDiv.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>`;
+                messageDiv.append(iconDiv, textDiv);
+            }
+            
+            textDiv.appendChild(textP);
+            chatContainer.appendChild(messageDiv);
+            chatHistoryContainer.scrollTop = chatHistoryContainer.scrollHeight;
+        }
+
+        function createQuestionElement(q, questionId) {
+            const questionDiv = document.createElement('div');
+            questionDiv.className = 'question-component bg-gray-900 p-4 rounded-lg border border-gray-700 flex gap-4 transition-all';
+            
+            let optionsHtml = '';
+            if (q.options) {
+                q.options.forEach(opt => {
+                    const isCorrect = opt === q.correct_option;
+                    const highlightClass = isCorrect ? 'correct-answer-highlight' : '';
+                    const checkedAttr = isCorrect ? 'checked' : '';
+                    optionsHtml += `
+                        <div class="option-container flex items-center gap-3 p-2 rounded-md ${highlightClass}">
+                            <input type="radio" name="q${questionId}" ${checkedAttr}>
+                            <span class="w-full" contenteditable="true">${opt}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            questionDiv.innerHTML = `
+                <div class="drag-handle text-gray-500 hover:text-white transition-colors pt-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                </div>
+                <div class="flex-1">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-sm font-medium text-gray-400 question-number">Question</p>
+                        <span class="text-xs font-bold bg-indigo-500 text-white py-1 px-2 rounded-full point-value">${q.points || 0} pts</span>
+                    </div>
+                    <p class="font-semibold mb-3" contenteditable="true">${q.question}</p>
+                    <div class="space-y-2 text-sm">${optionsHtml}</div>
+                </div>
+            `;
+            return questionDiv;
+        }
+
+        function renderQuizData(data) {
+            categoryList.innerHTML = ''; // Clear existing content
+            
+            Object.keys(data).forEach(categoryName => {
+                const categoryData = data[categoryName];
+                const details = document.createElement('details');
+                details.className = 'group';
+                details.open = true;
+
+                details.innerHTML = `
+                    <summary class="category-drag-handle flex items-center justify-between p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                            <h3 class="font-semibold text-lg" contenteditable="true">${categoryName}</h3>
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 transform group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                    </summary>
+                    <div class="p-2 space-y-3 question-list"></div>
+                `;
+
+                const questionListDiv = details.querySelector('.question-list');
+                if (categoryData.questions) {
+                    categoryData.questions.forEach((q) => {
+                        const questionEl = createQuestionElement(q, questionIdCounter++);
+                        questionListDiv.appendChild(questionEl);
+                    });
+                    updateQuestionOrder(questionListDiv);
+                }
+                categoryList.appendChild(details);
+            });
+            initializeSortables();
+        }
+
+
+        // --- File Save/Download Logic ---
+        function getQuizDataFromUI() {
+            const quizData = {};
+            const categories = document.querySelectorAll('#category-list > details');
+            
+            categories.forEach(categoryEl => {
+                const categoryTitle = categoryEl.querySelector('h3').textContent.trim();
+                quizData[categoryTitle] = { questions: [] };
+                
+                const questions = categoryEl.querySelectorAll('.question-component');
+                questions.forEach((questionEl, index) => {
+                    const questionText = questionEl.querySelector('p[contenteditable]').textContent.trim();
+                    const points = parseInt(questionEl.querySelector('.point-value').textContent, 10) || (index + 1) * 10;
+                    const options = [];
+                    let correctOption = '';
+
+                    questionEl.querySelectorAll('.option-container').forEach(optionEl => {
+                        const optionText = optionEl.querySelector('span[contenteditable]').textContent.trim();
+                        options.push(optionText);
+                        if (optionEl.classList.contains('correct-answer-highlight')) {
+                            correctOption = optionText;
+                        }
+                    });
+
+                    quizData[categoryTitle].questions.push({
+                        points: points,
+                        type: "multiple-choice",
+                        question: questionText,
+                        options: options,
+                        correct_option: correctOption,
+                        image: null
+                    });
+                });
+            });
+            return quizData;
+        }
+
+        saveJsonBtn.addEventListener('click', function() {
+            const quizData = getQuizDataFromUI();
+            const jsonString = JSON.stringify(quizData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            downloadJsonBtn.href = url;
+            downloadJsonBtn.download = 'quiz.json';
+            downloadJsonBtn.classList.remove('disabled');
+            downloadJsonBtn.classList.remove('bg-gray-600');
+            downloadJsonBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+            alert('JSON file is ready for download.');
+        });
+
+        saveDocxBtn.addEventListener('click', function() {
+            if (typeof window.docx === 'undefined') {
+                alert('Error: The DOCX generation library is not loaded. Please check your internet connection and try again.');
+                return;
+            }
+
+            const quizData = getQuizDataFromUI();
+            const { Document, Packer, Paragraph, TextRun, HeadingLevel } = window.docx;
+
+            const docChildren = [];
+
+            for (const category in quizData) {
+                docChildren.push(new Paragraph({
+                    text: category,
+                    heading: HeadingLevel.HEADING_1,
+                    spacing: { after: 200 },
+                }));
+
+                quizData[category].questions.forEach((q, index) => {
+                    docChildren.push(new Paragraph({
+                        children: [
+                            new TextRun({ text: `${index + 1}. ${q.question}`, bold: true }),
+                        ],
+                        spacing: { after: 100 },
+                    }));
+                    
+                    q.options.forEach(opt => {
+                        const isCorrect = opt === q.correct_option;
+                        docChildren.push(new Paragraph({
+                            children: [
+                                new TextRun({ text: `- ${opt}`, bold: isCorrect, color: isCorrect ? "008000" : "000000" }),
+                            ],
+                            indent: { left: 720 }, // Indent options
+                        }));
+                    });
+                    docChildren.push(new Paragraph("")); // Add a blank line for spacing
+                });
+            }
+
+            const doc = new Document({
+                sections: [{
+                    children: docChildren,
+                }],
+            });
+
+            Packer.toBlob(doc).then(blob => {
+                const url = URL.createObjectURL(blob);
+                downloadDocxBtn.href = url;
+                downloadDocxBtn.download = 'quiz.docx';
+                downloadDocxBtn.classList.remove('disabled');
+                downloadDocxBtn.classList.remove('bg-gray-600');
+                downloadDocxBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                alert('DOCX file is ready for download.');
+            });
+        });
+    }
+
+    // The main application script now runs after the DOM is fully loaded.
+    // Since the docx library is loaded from CDN, we wait for the window 'load' event.
+    window.addEventListener('load', initializeQuizApp);
+    </script>
+
+    </body>
+    </html>
