@@ -106,7 +106,7 @@ Data Formats: JSON, DOCX
 
 🚀 Setup & Usage
 1️⃣ Clone the Repository
-git clone https://github.com/your-username/ai-quiz-maker-chatbot.git
+git clone https://github.com/mvsaiamrutha3/ai-quiz-maker-chatbot.git
 cd ai-quiz-maker-chatbot
 
 2️⃣ Install Dependencies
@@ -147,10 +147,10 @@ You can now generate quizzes, edit questions via chat, validate answers using we
 
 🎯 Use Cases
 
-Educators creating quizzes quickly
+- Educators creating quizzes quickly
 
-Students generating practice assessments
+- Students generating practice assessments
 
-Interview and exam preparation
+- Interview and exam preparation
 
-AI-assisted learning platforms
+- AI-assisted learning platforms
